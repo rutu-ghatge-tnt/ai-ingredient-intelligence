@@ -1,0 +1,30 @@
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv311/
+.env
+
+# VSCode settings
+.vscode/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# MacOS files
+.DS_Store
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Ignore data files you don't want to commit (optional)
+*.xlsx
+*.csv
+*.json
+
+# Ignore frontend build folders if any
+frontend/build/
