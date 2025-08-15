@@ -1,23 +1,31 @@
 # app/api/analyze_inci.py
-
-"""Swagger-friendly INCI analysis endpoint"""
-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 import time
+from typing import List
 from app.logic.matcher import match_inci_names
 from app.models.schemas import AnalyzeInciRequest, AnalyzeInciResponse, AnalyzeInciItem
 
 router = APIRouter(tags=["INCI Analysis"])
 
-@router.post("/analyze-inci", response_model=AnalyzeInciResponse, summary="Analyze INCI and list matching branded ingredients")
+@router.post("/analyze-inci", response_model=AnalyzeInciResponse)
 async def analyze_inci(payload: AnalyzeInciRequest):
     start = time.time()
-    matched_raw, unmatched = await match_inci_names(payload.inci_names)
-    items = [AnalyzeInciItem(**m) for m in matched_raw]
-    conf = round(len(items) / max(len(payload.inci_names), 1), 2)
+    try:
+        matched_raw, unmatched = await match_inci_names(payload.inci_names)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+
+    items: List[AnalyzeInciItem] = [AnalyzeInciItem(**m) for m in matched_raw]
+
+    # 🔹 Calculate overall confidence: sum of match_score for each matched brand / total brands
+    if matched_raw:
+        confidence = round(sum(m.get("match_score", 0) for m in matched_raw) / len(matched_raw), 2)
+    else:
+        confidence = 0.0
+
     return AnalyzeInciResponse(
         matched=items,
         unmatched=unmatched,
-        overall_confidence=conf,
-        processing_time=round(time.time() - start, 3)
+        overall_confidence=confidence,
+        processing_time=round(time.time() - start, 3),
     )

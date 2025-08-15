@@ -1,46 +1,115 @@
 # app/logic/matcher.py
-
-"""Batch INCI → branded lookup using normalized fields"""
-
+import re
 from typing import List, Tuple
-import re, unicodedata
-from app.db.collections import branded_ingredients_col, inci_col
+from bson import ObjectId
+from app.db.mongodb import db
 
-def _norm(s: str) -> str:
-    s = unicodedata.normalize("NFKD", (s or "")).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", s).strip().lower()
+
+async def build_category_tree(collection, category_ids, name_field):
+    """
+    Given a collection and list of category ObjectIds, build a list of name paths.
+    Example: [["Colorants", "Organic Colorants", "Natural Organic Colorants"]]
+    """
+    results = []
+    for cid in category_ids:
+        if not isinstance(cid, ObjectId):
+            try:
+                cid = ObjectId(cid)
+            except:
+                continue
+
+        path = []
+        current = await collection.find_one({"_id": cid})
+        while current:
+            path.insert(0, current.get(name_field))
+            parent_id = current.get("parent_id")
+            if parent_id:
+                current = await collection.find_one({"_id": parent_id})
+            else:
+                current = None
+        results.append(path)
+    return results
+
 
 async def match_inci_names(inci_names: List[str]) -> Tuple[List[dict], List[str]]:
-    if not inci_names:
-        return [], []
+    """
+    Matches given INCI names against the branded_ingredients collection.
+    Returns matches with description, functionality & chemical class trees.
+    """
 
-    normalized = [_norm(x) for x in inci_names if (x or "").strip()]
-    inci_docs = await inci_col.find(
-        {"inciName_normalized": {"$in": normalized}},
-        {"_id": 1, "inciName": 1}
-    ).to_list(None)
+    branded_ingredients_col = db["branded_ingredients"]
+    func_cat_col = db["functional_categories"]
+    chem_class_col = db["chemical_classes"]
 
-    inci_ids = [str(d["_id"]) for d in inci_docs]
-    branded_docs = await branded_ingredients_col.find(
-        {"inci_ids": {"$in": inci_ids}},
+    # Normalize product INCI list
+    product_inci_set = {name.strip().lower() for name in inci_names}
+
+    matched_results = []
+
+    # Fetch branded ingredients with their INCI and supplier name
+    pipeline = [
         {
-            "_id": 1, "ingredient_name": 1, "original_inci_name": 1, "supplier_id": 1,
-            "description": 1, "functional_category_ids": 1, "chemical_class_ids": 1,
-            "documents_id": 1
+            "$lookup": {
+                "from": "inci",
+                "localField": "inci_ids",
+                "foreignField": "_id",
+                "as": "inci_docs"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "suppliers",
+                "localField": "supplier_id",
+                "foreignField": "_id",
+                "as": "supplier_docs"
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "ingredient_name": 1,
+                "supplier_name": {"$arrayElemAt": ["$supplier_docs.supplierName", 0]},
+                "description": 1,
+                "functional_category_ids": 1,
+                "chemical_class_ids": 1,
+                "inci_list": "$inci_docs.inciName_normalized"
+            }
         }
-    ).to_list(None)
+    ]
 
-    matched = [{
-        "ingredient_name": d.get("ingredient_name", "") or "",
-        "original_inci_name": d.get("original_inci_name", "") or "",
-        "supplier_id": str(d.get("supplier_id")) if d.get("supplier_id") else None,
-        "description": d.get("description", "") or "",
-        "functional_category_ids": [str(x) for x in d.get("functional_category_ids", [])],
-        "chemical_class_ids": [str(x) for x in d.get("chemical_class_ids", [])],
-        "documents_id": [str(x) for x in d.get("documents_id", [])],
-    } for d in branded_docs]
+    async for doc in branded_ingredients_col.aggregate(pipeline):
+        brand_inci_list = [i.strip().lower() for i in doc.get("inci_list", [])]
+        brand_inci_set = set(brand_inci_list)
+        total_brand_inci = len(brand_inci_set)
 
-    matched_norms = { _norm(doc["inciName"]) for doc in inci_docs }
-    unmatched = [raw for raw in inci_names if _norm(raw) not in matched_norms]
+        if brand_inci_set.issubset(product_inci_set) and total_brand_inci > 0:
+            func_tree = await build_category_tree(
+                func_cat_col,
+                doc.get("functional_category_ids", []),
+                "functionalName"
+            )
+            chem_tree = await build_category_tree(
+                chem_class_col,
+                doc.get("chemical_class_ids", []),
+                "chemicalClassName"
+            )
 
-    return matched, unmatched
+            matched_results.append({
+                "ingredient_name": doc["ingredient_name"],
+                "supplier_name": doc.get("supplier_name"),  # FIXED: use the string from aggregation
+                "description": doc.get("description"),
+                "functionality_category_tree": func_tree,
+                "chemical_class_category_tree": chem_tree,
+                "match_score": 1.0,
+                "matched_inci": list(brand_inci_set),
+                "matched_count": total_brand_inci,
+                "total_brand_inci": total_brand_inci
+            })
+
+    # Sort matches by number of INCI
+    matched_results.sort(key=lambda x: x["total_brand_inci"], reverse=True)
+
+    matched_inci_all = {inci for match in matched_results for inci in match["matched_inci"]}
+    unmatched_terms = sorted(product_inci_set - matched_inci_all)
+
+    return matched_results, unmatched_terms
