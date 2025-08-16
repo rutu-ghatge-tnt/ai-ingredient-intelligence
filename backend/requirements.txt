@@ -15,3 +15,6 @@ lightgbm
 catboost
 gensim
 node2vec
+
+tqdm
+pymongo

@@ -2,8 +2,19 @@
 from fastapi import FastAPI
 from app.api.analyze_inci import router as analyze_inci_router
 from app.db.mongodb import db
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Ingredient Intelligence — Direct INCI Matcher", debug=True)
+
+# ✅ CORS Configuration: Allow only your frontend origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://tt.skintruth.in", "http://localhost:5174", "http://localhost:5173"],     
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/", tags=["Health"])
 async def root():
