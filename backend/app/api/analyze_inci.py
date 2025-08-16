@@ -13,6 +13,7 @@ async def analyze_inci(payload: AnalyzeInciRequest):
     try:
         matched_raw, unmatched = await match_inci_names(payload.inci_names)
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
     items: List[AnalyzeInciItem] = [AnalyzeInciItem(**m) for m in matched_raw]

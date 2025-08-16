@@ -37,9 +37,9 @@ async def match_inci_names(inci_names: List[str]) -> Tuple[List[dict], List[str]
     Returns matches with description, functionality & chemical class trees.
     """
 
-    branded_ingredients_col = db["branded_ingredients"]
-    func_cat_col = db["functional_categories"]
-    chem_class_col = db["chemical_classes"]
+    branded_ingredients_col = db["ingre_branded_ingredients"]
+    func_cat_col = db["ingre_functional_categories"]
+    chem_class_col = db["ingre_chemical_classes"]
 
     # Normalize product INCI list
     product_inci_set = {name.strip().lower() for name in inci_names}
@@ -50,7 +50,7 @@ async def match_inci_names(inci_names: List[str]) -> Tuple[List[dict], List[str]
     pipeline = [
         {
             "$lookup": {
-                "from": "inci",
+                "from": "ingre_inci",
                 "localField": "inci_ids",
                 "foreignField": "_id",
                 "as": "inci_docs"
@@ -58,7 +58,7 @@ async def match_inci_names(inci_names: List[str]) -> Tuple[List[dict], List[str]
         },
         {
             "$lookup": {
-                "from": "suppliers",
+                "from": "ingre_suppliers",
                 "localField": "supplier_id",
                 "foreignField": "_id",
                 "as": "supplier_docs"

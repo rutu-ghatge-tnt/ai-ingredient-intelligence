@@ -33,7 +33,7 @@ from tqdm import tqdm
 # Config
 # -------------------
 MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "ingredients_db"
+DB_NAME = "ingredient_skin_bb"
 DATA_FILE = "cleaned_ingredients.json"
 
 # Toggle behaviors
@@ -48,13 +48,13 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
 # Collections
-branded_col = db["branded_ingredients"]
-inci_col = db["inci"]
-supplier_col = db["suppliers"]
-func_cat_col = db["functional_categories"]
-chem_class_col = db["chemical_classes"]
-docs_col = db["documents"]
-formulations_col = db["formulations"]
+branded_col = db["ingre_branded_ingredients"]
+inci_col = db["ingre_inci"]
+supplier_col = db["ingre_suppliers"]
+func_cat_col = db["ingre_functional_categories"]
+chem_class_col = db["ingre_chemical_classes"]
+docs_col = db["ingre_documents"]
+formulations_col = db["ingre_formulations"]
 
 # -------------------
 # Caches (avoid dups)
